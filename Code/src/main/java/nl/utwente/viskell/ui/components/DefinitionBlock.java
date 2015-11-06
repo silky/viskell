@@ -1,6 +1,8 @@
 package nl.utwente.viskell.ui.components;
 
 import javafx.fxml.FXML;
+import javafx.geometry.BoundingBox;
+import javafx.geometry.Bounds;
 import javafx.scene.control.Label;
 import javafx.scene.layout.Pane;
 import nl.utwente.ewi.caes.tactilefx.control.TactilePane;
@@ -80,6 +82,7 @@ public class DefinitionBlock extends Block implements ComponentLoader {
     @FXML private Pane argSpace;
     @FXML private Pane resSpace;
     @FXML private Pane funSpace;
+    @FXML private Pane content;
 
     @FXML private Label signature;
 
@@ -184,9 +187,55 @@ public class DefinitionBlock extends Block implements ComponentLoader {
         this.expr = new Lambda(binders, this.res.getExpr());
     }
 
+    /** Return the union of two Bounds, i.e. a Bound that contains both. */
+    private Bounds union(Bounds a, Bounds b) {
+        double left   = Math.min(a.getMinX(), b.getMinX());
+        double right  = Math.max(a.getMaxX(), b.getMaxX());
+        double top    = Math.min(a.getMinY(), b.getMinY());
+        double bottom = Math.max(a.getMaxY(), b.getMaxY());
+
+        return new BoundingBox(left, top, right - left, bottom - top);
+
+    }
+
+    /** Return the bounding box of this anchor and (recursively) everything connected to it. */
+    private Bounds findBounds(OutputAnchor anchor) {
+        Bounds bounds = new BoundingBox(anchor.block.getLayoutX(), anchor.block.getLayoutY(), 0, 0);
+
+        for (Optional<InputAnchor> i : anchor.getOppositeAnchors()) {
+            if (i.isPresent()) {
+                InputAnchor input = i.get();
+                Block block = input.block;
+
+                bounds = union(bounds, block.getBoundsInParent());
+
+                if (block.getOutputAnchor().isPresent()) {
+                    bounds = union(bounds, findBounds(block.getOutputAnchor().get()));
+                }
+            }
+        }
+
+        return bounds;
+    }
+
+    /** Resize this DefinitionBlock to fit its contents. */
+    private void fitPaneToContents() {
+        Bounds size = new BoundingBox(this.getLayoutX(), this.getLayoutY(), 400, 400);
+
+        for (BinderAnchor binder : args) {
+            size = union(size, findBounds(binder));
+        }
+
+        content.setPrefWidth(size.getWidth());
+        content.setPrefHeight(size.getHeight());
+    }
+
     @Override
     public void invalidateVisualState() {
         // also update the internal blocks connected to the internal anchor 
         this.res.getOppositeAnchor().ifPresent(a -> a.invalidateVisualState());
+
+        fitPaneToContents();
     }
+
 }
